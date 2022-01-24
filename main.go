@@ -17,6 +17,10 @@ import (
 
 var clientset *kubernetes.Clientset
 
+const (
+	controllerAnnotation = "kube-svc-route53-registrator"
+)
+
 func main() {
 	kubeconfig := os.Getenv("KUBECONFIG")
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
@@ -39,6 +43,14 @@ func main() {
 	informer.Run(stopper)
 }
 
+func isServiceElligible(svc *v1.Service) bool {
+	annotation, ok := svc.Annotations[controllerAnnotation]
+	if !ok || annotation != "true" {
+		return false
+	}
+	return true
+}
+
 func onEndpointAdd(obj interface{}) {
 	// casting obj as Endpoints
 	ep := obj.(*v1.Endpoints)
@@ -54,5 +66,9 @@ func onEndpointAdd(obj interface{}) {
 			return
 		}
 	}
-	log.Printf("The service found: %s and annotations are: %s", svc.Name, svc.Annotations)
+	if !isServiceElligible(svc) {
+		log.Printf("Skipping service %s since we are not responsible for it.", svc.Name)
+		return
+	}
+	log.Printf("The ip address is: %v", ep.Subsets)
 }
