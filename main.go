@@ -70,5 +70,16 @@ func onEndpointAdd(obj interface{}) {
 		log.Printf("Skipping service %s since we are not responsible for it.", svc.Name)
 		return
 	}
-	log.Printf("The ip address is: %v", ep.Subsets)
+	ips := extractIpAddresses(ep)
+	log.Printf("The IP Addresses are: %v", ips)
+}
+
+func extractIpAddresses(ep *v1.Endpoints) []string {
+	ips := make([]string, 0)
+	for _, subset := range ep.Subsets {
+		for _, address := range subset.Addresses {
+			ips = append(ips, address.IP)
+		}
+	}
+	return ips
 }
