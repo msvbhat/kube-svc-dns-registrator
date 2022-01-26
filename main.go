@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 
@@ -15,14 +16,24 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-var clientset *kubernetes.Clientset
+var (
+	clientset    *kubernetes.Clientset
+	kubeconfig   string
+	dnsName      string
+	hostedZoneId string
+)
 
 const (
 	controllerAnnotation = "kube-svc-route53-registrator"
 )
 
+func init() {
+	kubeconfig = os.Getenv("KUBECONFIG")
+	dnsName = os.Getenv("DNS_NAME")
+	hostedZoneId = os.Getenv("HOSTED_ZONE_ID")
+}
+
 func main() {
-	kubeconfig := os.Getenv("KUBECONFIG")
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
 		log.Panic(err.Error())
@@ -39,16 +50,30 @@ func main() {
 
 	informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: onEndpointAdd,
+		UpdateFunc: func(old, new interface{}) {
+			onEndpointAdd(new)
+		},
 	})
 	informer.Run(stopper)
 }
 
+// isServiceElligible returns true if we should create Route53 record for the service
 func isServiceElligible(svc *v1.Service) bool {
 	annotation, ok := svc.Annotations[controllerAnnotation]
 	if !ok || annotation != "true" {
 		return false
 	}
 	return true
+}
+
+func extractIpAddresses(ep *v1.Endpoints) []string {
+	ips := make([]string, 0)
+	for _, subset := range ep.Subsets {
+		for _, address := range subset.Addresses {
+			ips = append(ips, address.IP)
+		}
+	}
+	return ips
 }
 
 func onEndpointAdd(obj interface{}) {
@@ -71,15 +96,7 @@ func onEndpointAdd(obj interface{}) {
 		return
 	}
 	ips := extractIpAddresses(ep)
-	log.Printf("The IP Addresses are: %v", ips)
-}
-
-func extractIpAddresses(ep *v1.Endpoints) []string {
-	ips := make([]string, 0)
-	for _, subset := range ep.Subsets {
-		for _, address := range subset.Addresses {
-			ips = append(ips, address.IP)
-		}
-	}
-	return ips
+	name := fmt.Sprintf("%s.%s", svc.Name, dnsName)
+	log.Printf("The IP Addresses of %s are: %v", name, ips)
+	route53CreateRecord(hostedZoneId, name, ips)
 }
