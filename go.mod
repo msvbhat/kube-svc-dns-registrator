@@ -1,4 +1,4 @@
-module kube-svc-route53-registrator
+module kube-svc-dns-registrator
 
 go 1.17
 

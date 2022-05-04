@@ -24,7 +24,7 @@ var (
 )
 
 const (
-	controllerAnnotation = "kube-svc-route53-registrator"
+	controllerAnnotation = "kube-svc-dns-registrator"
 )
 
 func init() {
